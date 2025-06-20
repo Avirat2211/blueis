@@ -32,10 +32,12 @@ func NewResp(rd io.Reader) *Resp {
 }
 
 func (r *Resp) Read() (Value, error) {
+
 	char, err := r.reader.ReadByte()
 	if err != nil {
 		return Value{}, err
 	}
+
 	switch char {
 	case ARRAY:
 		return r.ReadArray()
@@ -48,6 +50,7 @@ func (r *Resp) Read() (Value, error) {
 }
 
 func (r *Resp) ReadLine() (line []byte, n int, err error) {
+
 	for {
 		b, err := r.reader.ReadByte()
 		if err != nil {
@@ -59,29 +62,37 @@ func (r *Resp) ReadLine() (line []byte, n int, err error) {
 			break
 		}
 	}
+
 	return line[:len(line)-2], n, nil
 }
 
 func (r *Resp) ReadInteger() (val int, n int, err error) {
+
 	line, n, err := r.ReadLine()
 	if err != nil {
 		return 0, 0, err
 	}
+
 	v, err := strconv.ParseInt(string(line), 10, 64)
 	if err != nil {
 		return 0, n, err
 	}
+
 	return int(v), n, nil
 }
 
 func (r *Resp) ReadArray() (Value, error) {
+
 	v := Value{}
-	v.typ = "ARRAY"
+	v.typ = "array"
+
 	len, _, err := r.ReadInteger()
 	if err != nil {
 		return v, err
 	}
+
 	v.array = make([]Value, 0)
+
 	for i := 0; i < len; i++ {
 		val, err := r.Read()
 		if err != nil {
@@ -89,24 +100,29 @@ func (r *Resp) ReadArray() (Value, error) {
 		}
 		v.array = append(v.array, val)
 	}
+
 	return v, nil
 }
 
 func (r *Resp) ReadBulk() (Value, error) {
 	v := Value{}
-	v.typ = "BULK"
+	v.typ = "bulk"
+
 	len, _, err := r.ReadInteger()
 	if err != nil {
 		return v, err
 	}
+
 	bulk := make([]byte, len)
 	r.reader.Read(bulk)
 	v.bulk = string(bulk)
 	r.ReadLine()
+
 	return v, nil
 }
 
 func (v Value) Marshal() []byte {
+
 	switch v.typ {
 	case "array":
 		return v.marshalArray()
@@ -124,24 +140,29 @@ func (v Value) Marshal() []byte {
 }
 
 func (v Value) marshalString() []byte {
+
 	var s []byte
 	s = append(s, STRING)
 	s = append(s, v.str...)
 	s = append(s, '\r', '\n')
+
 	return s
 }
 
 func (v Value) marshalBulk() []byte {
+
 	var s []byte
 	s = append(s, BULK)
 	s = append(s, strconv.Itoa(len(v.bulk))...)
 	s = append(s, '\r', '\n')
 	s = append(s, v.bulk...)
 	s = append(s, '\r', '\n')
+
 	return s
 }
 
 func (v Value) marshalArray() []byte {
+
 	len := len(v.array)
 	var s []byte
 	s = append(s, ARRAY)
@@ -150,14 +171,17 @@ func (v Value) marshalArray() []byte {
 	for i := 0; i < len; i++ {
 		s = append(s, v.array[i].Marshal()...)
 	}
+
 	return s
 }
 
 func (v Value) marshalError() []byte {
+
 	var s []byte
 	s = append(s, ERROR)
 	s = append(s, v.str...)
 	s = append(s, '\r', '\n')
+
 	return s
 }
 
@@ -174,10 +198,13 @@ func NewWriter(w io.Writer) *Writer {
 }
 
 func (w *Writer) Write(v Value) error {
+
 	bytes := v.Marshal()
+
 	_, err := w.writer.Write(bytes)
 	if err != nil {
 		return err
 	}
+
 	return nil
 }

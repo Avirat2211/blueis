@@ -11,6 +11,7 @@ var Handlers = map[string]func([]Value) Value{
 	"HSET":    hset,
 	"HGET":    hget,
 	"HGETALL": hgetAll,
+	"COMMAND": command,
 }
 
 func ping(args []Value) Value {
@@ -60,6 +61,7 @@ var HSETs = map[string]map[string]string{}
 var HSETsMutex = sync.RWMutex{}
 
 func hset(args []Value) Value {
+
 	if len(args) != 3 {
 		return Value{typ: "error", str: "Wrong number of arguments for HSET command"}
 	}
@@ -68,45 +70,67 @@ func hset(args []Value) Value {
 	value := args[2].bulk
 
 	HSETsMutex.Lock()
-	_, err := HSETs[hash]
-	if !err {
+	defer HSETsMutex.Unlock()
+
+	_, ok := HSETs[hash]
+	if !ok {
 		HSETs[hash] = map[string]string{}
 	}
 	HSETs[hash][key] = value
-	HSETsMutex.Unlock()
+
 	return Value{typ: "string", str: "OK"}
 }
 
 func hget(args []Value) Value {
+
 	if len(args) != 2 {
 		return Value{typ: "error", str: "Wrong number of arguments for HGET command"}
 	}
+
 	hash := args[0].bulk
 	key := args[1].bulk
-	HSETsMutex.Lock()
-	value, err := HSETs[hash][key]
-	HSETsMutex.Unlock()
-	if !err {
+
+	HSETsMutex.RLock()
+	defer HSETsMutex.RUnlock()
+
+	m, ok := HSETs[hash]
+	if !ok {
 		return Value{typ: "null"}
 	}
+
+	value, ok := m[key]
+	if !ok {
+		return Value{typ: "null"}
+	}
+
 	return Value{typ: "bulk", bulk: value}
 }
 
 func hgetAll(args []Value) Value {
+
 	if len(args) != 1 {
 		return Value{typ: "error", str: "Wrong number of arguments for HGETALL command"}
 	}
+
 	hash := args[0].bulk
-	HSETsMutex.Lock()
+
+	HSETsMutex.RLock()
+	defer HSETsMutex.RUnlock()
+
 	val, ok := HSETs[hash]
 	if !ok {
 		return Value{typ: "array", array: []Value{}}
 	}
-	HSETsMutex.Unlock()
+
 	var value []Value
 	for x, y := range val {
 		value = append(value, Value{typ: "bulk", bulk: x})
 		value = append(value, Value{typ: "bulk", bulk: y})
 	}
+
 	return Value{typ: "array", array: value}
+}
+
+func command(args []Value) Value {
+	return Value{typ: "array", array: []Value{}}
 }
