@@ -15,13 +15,6 @@ func main() {
 		return
 	}
 
-	conn, err := l.Accept()
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	defer conn.Close()
-
 	aof, err := NewAof("database.aof")
 	if err != nil {
 		fmt.Println(err)
@@ -57,7 +50,20 @@ func main() {
 	})
 
 	for {
+		conn, err := l.Accept()
+		if err != nil {
+			fmt.Println(err)
+			continue
+		}
+		fmt.Println("New connection from", conn.RemoteAddr())
+		go handleConnection(conn, aof)
+	}
+}
 
+func handleConnection(conn net.Conn, aof *Aof) {
+	defer conn.Close()
+
+	for {
 		resp := NewResp(conn)
 		value, err := resp.Read()
 		if err != nil {
@@ -102,6 +108,5 @@ func main() {
 
 		result := handler(args)
 		writer.Write(result)
-
 	}
 }

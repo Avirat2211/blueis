@@ -145,6 +145,9 @@ func command(args []Value) Value {
 	return Value{typ: "array", array: []Value{}}
 }
 
+var Expiry = map[string]int64{}
+var ExpiryMutex = sync.RWMutex{}
+
 func expire(args []Value) Value {
 
 	if len(args) != 2 {
@@ -204,9 +207,6 @@ func ttl(args []Value) Value {
 
 	return Value{typ: "string", str: strconv.Itoa(int(ttl))}
 }
-
-var Expiry = map[string]int64{}
-var ExpiryMutex = sync.RWMutex{}
 
 func isExpired(key string) bool {
 
