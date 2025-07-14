@@ -1,4 +1,4 @@
-package main
+package aof
 
 import (
 	"bufio"
@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/Avirat2211/blueis/internal/resp"
 )
 
 type Aof struct {
@@ -48,7 +50,7 @@ func (aof *Aof) Close() error {
 	return aof.file.Close()
 }
 
-func (aof *Aof) Write(value Value) error {
+func (aof *Aof) Write(value resp.Value) error {
 
 	aof.mu.Lock()
 	defer aof.mu.Unlock()
@@ -61,11 +63,11 @@ func (aof *Aof) Write(value Value) error {
 	return aof.file.Sync()
 }
 
-func (aof *Aof) Read(callback func(value Value)) error {
+func (aof *Aof) Read(callback func(value resp.Value)) error {
 	aof.mu.Lock()
 	defer aof.mu.Unlock()
 
-	resp := NewResp(aof.file)
+	resp := resp.NewResp(aof.file)
 
 	for {
 		value, err := resp.Read()
@@ -83,19 +85,19 @@ func (aof *Aof) Read(callback func(value Value)) error {
 	return nil
 }
 
-func handleExpireWrite(aof *Aof, args []Value) error {
+func HandleExpireWrite(aof *Aof, args []resp.Value) error {
 	if len(args) == 2 {
-		secondsInt, err := strconv.ParseInt(args[1].bulk, 10, 64)
+		secondsInt, err := strconv.ParseInt(args[1].Bulk, 10, 64)
 		if err != nil {
 			return err
 		}
 		expiryTime := time.Now().Unix() + secondsInt
-		expireValue := Value{
-			typ: "array",
-			array: []Value{
-				{typ: "bulk", bulk: "EXPIRESAT"},
-				{typ: "bulk", bulk: args[0].bulk},
-				{typ: "bulk", bulk: strconv.FormatInt(expiryTime, 10)},
+		expireValue := resp.Value{
+			Typ: "Array",
+			Array: []resp.Value{
+				{Typ: "Bulk", Bulk: "EXPIRESAT"},
+				{Typ: "Bulk", Bulk: args[0].Bulk},
+				{Typ: "Bulk", Bulk: strconv.FormatInt(expiryTime, 10)},
 			},
 		}
 		return aof.Write(expireValue)

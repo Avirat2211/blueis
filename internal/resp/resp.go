@@ -1,4 +1,4 @@
-package main
+package resp
 
 import (
 	"bufio"
@@ -16,11 +16,11 @@ const (
 )
 
 type Value struct {
-	typ   string
-	str   string
-	num   string
-	bulk  string
-	array []Value
+	Typ   string
+	Str   string
+	Num   string
+	Bulk  string
+	Array []Value
 }
 
 type Resp struct {
@@ -84,21 +84,21 @@ func (r *Resp) ReadInteger() (val int, n int, err error) {
 func (r *Resp) ReadArray() (Value, error) {
 
 	v := Value{}
-	v.typ = "array"
+	v.Typ = "Array"
 
 	len, _, err := r.ReadInteger()
 	if err != nil {
 		return v, err
 	}
 
-	v.array = make([]Value, 0)
+	v.Array = make([]Value, 0)
 
 	for i := 0; i < len; i++ {
 		val, err := r.Read()
 		if err != nil {
 			return v, err
 		}
-		v.array = append(v.array, val)
+		v.Array = append(v.Array, val)
 	}
 
 	return v, nil
@@ -106,16 +106,16 @@ func (r *Resp) ReadArray() (Value, error) {
 
 func (r *Resp) ReadBulk() (Value, error) {
 	v := Value{}
-	v.typ = "bulk"
+	v.Typ = "Bulk"
 
 	len, _, err := r.ReadInteger()
 	if err != nil {
 		return v, err
 	}
 
-	bulk := make([]byte, len)
-	r.reader.Read(bulk)
-	v.bulk = string(bulk)
+	Bulk := make([]byte, len)
+	r.reader.Read(Bulk)
+	v.Bulk = string(Bulk)
 	r.ReadLine()
 
 	return v, nil
@@ -123,10 +123,10 @@ func (r *Resp) ReadBulk() (Value, error) {
 
 func (v Value) Marshal() []byte {
 
-	switch v.typ {
-	case "array":
+	switch v.Typ {
+	case "Array":
 		return v.marshalArray()
-	case "bulk":
+	case "Bulk":
 		return v.marshalBulk()
 	case "string":
 		return v.marshalString()
@@ -143,7 +143,7 @@ func (v Value) marshalString() []byte {
 
 	var s []byte
 	s = append(s, STRING)
-	s = append(s, v.str...)
+	s = append(s, v.Str...)
 	s = append(s, '\r', '\n')
 
 	return s
@@ -153,9 +153,9 @@ func (v Value) marshalBulk() []byte {
 
 	var s []byte
 	s = append(s, BULK)
-	s = append(s, strconv.Itoa(len(v.bulk))...)
+	s = append(s, strconv.Itoa(len(v.Bulk))...)
 	s = append(s, '\r', '\n')
-	s = append(s, v.bulk...)
+	s = append(s, v.Bulk...)
 	s = append(s, '\r', '\n')
 
 	return s
@@ -163,13 +163,13 @@ func (v Value) marshalBulk() []byte {
 
 func (v Value) marshalArray() []byte {
 
-	len := len(v.array)
+	len := len(v.Array)
 	var s []byte
 	s = append(s, ARRAY)
 	s = append(s, strconv.Itoa(len)...)
 	s = append(s, '\r', '\n')
 	for i := 0; i < len; i++ {
-		s = append(s, v.array[i].Marshal()...)
+		s = append(s, v.Array[i].Marshal()...)
 	}
 
 	return s
@@ -179,7 +179,7 @@ func (v Value) marshalError() []byte {
 
 	var s []byte
 	s = append(s, ERROR)
-	s = append(s, v.str...)
+	s = append(s, v.Str...)
 	s = append(s, '\r', '\n')
 
 	return s

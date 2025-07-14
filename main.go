@@ -5,6 +5,10 @@ import (
 	"net"
 	"strconv"
 	"strings"
+
+	"github.com/Avirat2211/blueis/internal/aof"
+	"github.com/Avirat2211/blueis/internal/handler"
+	"github.com/Avirat2211/blueis/internal/resp"
 )
 
 func main() {
@@ -15,31 +19,31 @@ func main() {
 		return
 	}
 
-	aof, err := NewAof("database.aof")
+	aofInstance, err := aof.NewAof("database.aof")
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	defer aof.Close()
-	aof.Read(func(value Value) {
+	defer aofInstance.Close()
+	aofInstance.Read(func(value resp.Value) {
 
-		command := strings.ToUpper(value.array[0].bulk)
-		args := value.array[1:]
+		command := strings.ToUpper(value.Array[0].Bulk)
+		args := value.Array[1:]
 
 		if command == "EXPIRESAT" {
 			if len(args) == 2 {
-				key := args[0].bulk
-				timestamp, err := strconv.ParseInt(args[1].bulk, 10, 64)
+				key := args[0].Bulk
+				timestamp, err := strconv.ParseInt(args[1].Bulk, 10, 64)
 				if err == nil {
-					ExpiryMutex.Lock()
-					Expiry[key] = timestamp
-					ExpiryMutex.Unlock()
+					handler.ExpiryMutex.Lock()
+					handler.Expiry[key] = timestamp
+					handler.ExpiryMutex.Unlock()
 				}
 			}
 			return
 		}
 
-		handler, ok := Handlers[command]
+		handler, ok := handler.Handlers[command]
 		if !ok {
 			fmt.Println("Invalid command: ", command)
 			return
@@ -56,51 +60,51 @@ func main() {
 			continue
 		}
 		fmt.Println("New connection from", conn.RemoteAddr())
-		go handleConnection(conn, aof)
+		go handleConnection(conn, aofInstance)
 	}
 }
 
-func handleConnection(conn net.Conn, aof *Aof) {
+func handleConnection(conn net.Conn, aofInstance *aof.Aof) {
 	defer conn.Close()
 
 	for {
-		resp := NewResp(conn)
-		value, err := resp.Read()
+		respp := resp.NewResp(conn)
+		value, err := respp.Read()
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
 
-		if value.typ != "array" {
-			fmt.Println("Invalid request, expected array")
+		if value.Typ != "Array" {
+			fmt.Println("Invalid request, expected Array")
 			continue
 		}
 
-		if len(value.array) == 0 {
-			fmt.Println("Invalid request, expected array length>0")
+		if len(value.Array) == 0 {
+			fmt.Println("Invalid request, expected Array length > 0")
 			continue
 		}
 
-		command := strings.ToUpper(value.array[0].bulk)
-		args := value.array[1:]
+		command := strings.ToUpper(value.Array[0].Bulk)
+		args := value.Array[1:]
 
-		writer := NewWriter(conn)
+		writer := resp.NewWriter(conn)
 
-		handler, ok := Handlers[command]
+		handler, ok := handler.Handlers[command]
 
 		if !ok {
 			fmt.Println("Invalid command: ", command)
-			writer.Write(Value{typ: "string", str: ""})
+			writer.Write(resp.Value{Typ: "string", Str: ""})
 			continue
 		}
 
 		if command == "SET" || command == "HSET" {
-			err := aof.Write(value)
+			err := aofInstance.Write(value)
 			if err != nil {
 				fmt.Println(err)
 			}
 		} else if command == "EXPIRE" {
-			err := handleExpireWrite(aof, args)
+			err := aof.HandleExpireWrite(aofInstance, args)
 			if err != nil {
 				fmt.Println(err)
 			}
