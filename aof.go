@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -79,5 +80,25 @@ func (aof *Aof) Read(callback func(value Value)) error {
 		continue
 	}
 
+	return nil
+}
+
+func handleExpireWrite(aof *Aof, args []Value) error {
+	if len(args) == 2 {
+		secondsInt, err := strconv.ParseInt(args[1].bulk, 10, 64)
+		if err != nil {
+			return err
+		}
+		expiryTime := time.Now().Unix() + secondsInt
+		expireValue := Value{
+			typ: "array",
+			array: []Value{
+				{typ: "bulk", bulk: "EXPIRESAT"},
+				{typ: "bulk", bulk: args[0].bulk},
+				{typ: "bulk", bulk: strconv.FormatInt(expiryTime, 10)},
+			},
+		}
+		return aof.Write(expireValue)
+	}
 	return nil
 }

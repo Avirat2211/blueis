@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 )
 
@@ -27,11 +28,23 @@ func main() {
 		return
 	}
 	defer aof.Close()
-
 	aof.Read(func(value Value) {
 
 		command := strings.ToUpper(value.array[0].bulk)
 		args := value.array[1:]
+
+		if command == "EXPIRESAT" {
+			if len(args) == 2 {
+				key := args[0].bulk
+				timestamp, err := strconv.ParseInt(args[1].bulk, 10, 64)
+				if err == nil {
+					ExpiryMutex.Lock()
+					Expiry[key] = timestamp
+					ExpiryMutex.Unlock()
+				}
+			}
+			return
+		}
 
 		handler, ok := Handlers[command]
 		if !ok {
@@ -40,6 +53,7 @@ func main() {
 		}
 
 		handler(args)
+
 	})
 
 	for {
@@ -76,6 +90,11 @@ func main() {
 
 		if command == "SET" || command == "HSET" {
 			err := aof.Write(value)
+			if err != nil {
+				fmt.Println(err)
+			}
+		} else if command == "EXPIRE" {
+			err := handleExpireWrite(aof, args)
 			if err != nil {
 				fmt.Println(err)
 			}

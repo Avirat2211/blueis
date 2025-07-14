@@ -1,7 +1,9 @@
 package main
 
 import (
+	"strconv"
 	"sync"
+	"time"
 )
 
 var Handlers = map[string]func([]Value) Value{
@@ -12,6 +14,8 @@ var Handlers = map[string]func([]Value) Value{
 	"HGET":    hget,
 	"HGETALL": hgetAll,
 	"COMMAND": command,
+	"EXPIRE":  expire,
+	"TTL":     ttl,
 }
 
 func ping(args []Value) Value {
@@ -45,6 +49,8 @@ func get(args []Value) Value {
 	}
 
 	key := args[0].bulk
+
+	cleanupIfExpired(key)
 
 	SETsMutex.RLock()
 	value, ok := SETs[key]
@@ -90,6 +96,8 @@ func hget(args []Value) Value {
 	hash := args[0].bulk
 	key := args[1].bulk
 
+	cleanupIfExpired(hash)
+
 	HSETsMutex.RLock()
 	defer HSETsMutex.RUnlock()
 
@@ -114,6 +122,8 @@ func hgetAll(args []Value) Value {
 
 	hash := args[0].bulk
 
+	cleanupIfExpired(hash)
+
 	HSETsMutex.RLock()
 	defer HSETsMutex.RUnlock()
 
@@ -133,4 +143,98 @@ func hgetAll(args []Value) Value {
 
 func command(args []Value) Value {
 	return Value{typ: "array", array: []Value{}}
+}
+
+func expire(args []Value) Value {
+
+	if len(args) != 2 {
+		return Value{typ: "error", str: "Wrong number of arguments for EXPIRE command"}
+	}
+
+	key := args[0].bulk
+
+	seconds, err := strconv.Atoi(args[1].bulk)
+	if err != nil {
+		return Value{typ: "error", str: "Invalid seconds value for EXPIRE command"}
+	}
+
+	SETsMutex.RLock()
+	_, setOk := SETs[key]
+	SETsMutex.RUnlock()
+
+	HSETsMutex.RLock()
+	_, hsetOk := HSETs[key]
+	HSETsMutex.RUnlock()
+
+	if !setOk && !hsetOk {
+		return Value{typ: "string", str: "0"}
+	}
+
+	expiryTime := time.Now().Unix() + int64(seconds)
+
+	ExpiryMutex.Lock()
+	Expiry[key] = expiryTime
+	ExpiryMutex.Unlock()
+
+	return Value{typ: "string", str: "1"}
+
+}
+
+func ttl(args []Value) Value {
+
+	if len(args) != 1 {
+		return Value{typ: "error", str: "Wrong number of arguments for TTL command"}
+	}
+
+	key := args[0].bulk
+
+	ExpiryMutex.RLock()
+	exp, ok := Expiry[key]
+	ExpiryMutex.RUnlock()
+
+	if !ok {
+		return Value{typ: "string", str: "-1"}
+	}
+
+	ttl := exp - time.Now().Unix()
+
+	if ttl < 0 {
+		return Value{typ: "string", str: "-2"}
+	}
+
+	return Value{typ: "string", str: strconv.Itoa(int(ttl))}
+}
+
+var Expiry = map[string]int64{}
+var ExpiryMutex = sync.RWMutex{}
+
+func isExpired(key string) bool {
+
+	ExpiryMutex.RLock()
+	exp, ok := Expiry[key]
+	ExpiryMutex.RUnlock()
+
+	if !ok {
+		return false
+	}
+
+	return time.Now().Unix() > exp
+}
+
+func cleanupIfExpired(key string) {
+
+	if isExpired(key) {
+
+		SETsMutex.Lock()
+		delete(SETs, key)
+		SETsMutex.Unlock()
+
+		HSETsMutex.Lock()
+		delete(HSETs, key)
+		HSETsMutex.Unlock()
+
+		ExpiryMutex.Lock()
+		delete(Expiry, key)
+		ExpiryMutex.Unlock()
+	}
 }
