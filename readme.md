@@ -26,7 +26,7 @@ Blueis is a simple in-memory key-value store server inspired by Redis, written i
 1. **Build and Run**
 
    ```sh
-   go run .
+   go run main.go
    ```
 
    The server listens on port `6379` by default.
