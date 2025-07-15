@@ -98,7 +98,7 @@ func handleConnection(conn net.Conn, aofInstance *aof.Aof) {
 			continue
 		}
 
-		if command == "SET" || command == "HSET" {
+		if command == "SET" || command == "HSET" || command == "ZADD" {
 			err := aofInstance.Write(value)
 			if err != nil {
 				fmt.Println(err)

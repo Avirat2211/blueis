@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Avirat2211/blueis/internal/resp"
+	"github.com/wangjia184/sortedset"
 )
 
 var Handlers = map[string]func([]resp.Value) resp.Value{
@@ -18,6 +19,9 @@ var Handlers = map[string]func([]resp.Value) resp.Value{
 	"COMMAND": command,
 	"EXPIRE":  expire,
 	"TTL":     ttl,
+	"ZADD":    zadd,
+	"ZRANGE":  zrange,
+	"ZREM":    zrem,
 }
 
 func ping(args []resp.Value) resp.Value {
@@ -131,7 +135,7 @@ func hgetAll(args []resp.Value) resp.Value {
 
 	val, ok := HSETs[hash]
 	if !ok {
-		return resp.Value{Typ: "array", Array: []resp.Value{}}
+		return resp.Value{Typ: "Array", Array: []resp.Value{}}
 	}
 
 	var value []resp.Value
@@ -140,7 +144,7 @@ func hgetAll(args []resp.Value) resp.Value {
 		value = append(value, resp.Value{Typ: "Bulk", Bulk: y})
 	}
 
-	return resp.Value{Typ: "array", Array: value}
+	return resp.Value{Typ: "Array", Array: value}
 }
 
 func command(args []resp.Value) resp.Value {
@@ -239,4 +243,115 @@ func cleanupIfExpired(key string) {
 		delete(Expiry, key)
 		ExpiryMutex.Unlock()
 	}
+}
+
+var ZSETs = map[string]*sortedset.SortedSet{}
+var ZSETsMutex = sync.RWMutex{}
+
+func zadd(args []resp.Value) resp.Value {
+
+	if len(args) < 3 || len(args)%2 == 0 {
+		return resp.Value{Typ: "error", Str: "Wrong number of arguments for ZADD command"}
+	}
+
+	key := args[0].Bulk
+	// fmt.Printf("[DEBUG] ZSETs has %d keys before %s on %q\n", len(ZSETs), "ZADD", key)
+	ZSETsMutex.Lock()
+	defer ZSETsMutex.Unlock()
+	ss, ok := ZSETs[key]
+	if !ok {
+		ss = sortedset.New()
+		ZSETs[key] = ss
+	}
+
+	count := 0
+
+	for i := 1; i < len(args); i += 2 {
+		score, err := strconv.ParseInt(args[i].Bulk, 10, 64)
+		if err != nil {
+			return resp.Value{Typ: "error", Str: "Invalid score for ZADD"}
+		}
+		member := args[i+1].Bulk
+		check := ss.GetByKey(member)
+		// fmt.Println("ZADD", key, score, member)
+		// fmt.Println("Check:", check)
+		ss.AddOrUpdate(member, sortedset.SCORE(score), nil)
+		if check == nil {
+			// not found
+			count++
+		}
+	}
+
+	return resp.Value{Typ: "string", Str: strconv.Itoa(count)}
+
+}
+
+func zrange(args []resp.Value) resp.Value {
+
+	if len(args) < 3 || len(args) > 4 {
+		return resp.Value{Typ: "error", Str: "Wrong number of arguments for ZRANGE command"}
+	}
+	key := args[0].Bulk
+	// fmt.Printf("[DEBUG] ZSETs has %d keys before %s on %q\n", len(ZSETs), "ZRANGE", key)
+	l, err1 := strconv.Atoi(args[1].Bulk)
+	r, err2 := strconv.Atoi(args[2].Bulk)
+	withscores := false
+	if err1 != nil || err2 != nil {
+		return resp.Value{Typ: "error", Str: "Invalid range for ZRANGE command"}
+	}
+	if len(args) == 4 {
+		withscores = true
+	}
+	ZSETsMutex.RLock()
+	ss, ok := ZSETs[key]
+	ZSETsMutex.RUnlock()
+	if !ok {
+		return resp.Value{Typ: "Array", Array: []resp.Value{}}
+	}
+	size := ss.GetCount()
+	// fmt.Println("Key:", key)
+	// fmt.Println("size:", size)
+	if l < 0 {
+		l = size + l
+	}
+	if r < 0 {
+		r = size + r
+	}
+	if r >= size {
+		r = size - 1
+	}
+	if l > r || l >= size {
+		return resp.Value{Typ: "Array", Array: []resp.Value{}}
+	}
+	elements := ss.GetByRankRange(l+1, r+1, false)
+	var ans []resp.Value
+	for _, itp := range elements {
+		it := *(itp)
+		ans = append(ans, resp.Value{Typ: "Bulk", Bulk: it.Key()})
+		if withscores {
+			ans = append(ans, resp.Value{Typ: "Bulk", Bulk: strconv.FormatInt(int64(it.Score()), 10)})
+		}
+	}
+	return resp.Value{Typ: "Array", Array: ans}
+}
+
+func zrem(args []resp.Value) resp.Value {
+	if len(args) < 2 {
+		return resp.Value{Typ: "error", Str: "Wrong number of arguments for ZREM command"}
+	}
+	count := 0
+	key := args[0].Bulk
+	ZSETsMutex.Lock()
+	defer ZSETsMutex.Unlock()
+	ss, ok := ZSETs[key]
+	if !ok {
+		return resp.Value{Typ: "string", Str: "0"}
+	}
+	for i := 1; i < len(args); i++ {
+		val := args[i].Bulk
+		if ss.Remove(val) != nil {
+			count++
+		}
+	}
+	return resp.Value{Typ: "string", Str: strconv.Itoa(count)}
 }
